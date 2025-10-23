@@ -11,14 +11,18 @@ A minimal browser-based bot that lets you search Rule34 by tags and automaticall
 
 ## Getting Started
 
-1. Serve the project locally (for example with Python):
+1. Serve the project locally with the bundled helper server (requires Python 3.8+):
 
    ```bash
-   python3 -m http.server 8000
+   python server.py
    ```
 
-2. Open your browser to `http://localhost:8000`.
+   Use `python3 server.py` if your operating system still defaults `python` to Python 2.
+
+   On Windows you can double-click `serve.bat`, which runs the same command.
+
+2. Open your browser to `http://localhost:8000` (or another port if you passed `--port`).
 3. Enter one or more tags separated by spaces and press **Search**.
 4. The gallery will populate with results and the viewport will scroll every five seconds.
 
-> **Note:** The Rule34 API must support cross-origin requests from your browser. If requests fail with a CORS error, try running the page in a different browser or via an extension that enables CORS for development purposes.
+> **Note:** The local server exposes `/rule34-proxy`, keeping API requests on the same origin so browsers are not blocked by CORS. If results still fail to load, confirm that `server.py` is running and that your network can reach `https://api.rule34.xxx`.

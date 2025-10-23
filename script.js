@@ -3,10 +3,13 @@ const tagsField = document.getElementById('tags');
 const statusEl = document.getElementById('status');
 const resultsEl = document.getElementById('results');
 const postTemplate = document.getElementById('post-template');
+const testSamusButton = document.getElementById('test-samus');
 
 let autoScrollTimer;
 
 const SCROLL_INTERVAL_MS = 5000;
+const RULE34_API_URL = 'https://api.rule34.xxx/index.php';
+const LOCAL_RULE34_PROXY_PATH = '/rule34-proxy';
 
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
@@ -34,11 +37,33 @@ form.addEventListener('submit', async (event) => {
     startAutoScroll();
   } catch (error) {
     console.error(error);
-    updateStatus(
-      'Unable to load posts. The Rule34 API may be unavailable or blocked by CORS. Try again later.'
-    );
+    const failures = Array.isArray(error?.failures) ? error.failures : [];
+    const triedLocalProxy = failures.some(({ url }) => isLocalProxyUrl(url));
+
+    if (triedLocalProxy) {
+      updateStatus(
+        'Unable to load posts even through the local proxy. Make sure you started the app with "python server.py" and that the Rule34 API is reachable from your network.'
+      );
+    } else {
+      updateStatus(
+        'Unable to load posts after trying multiple endpoints. If you are opening the app locally, start it with "python server.py" so the built-in proxy can avoid CORS restrictions.'
+      );
+    }
   }
 });
+
+if (testSamusButton) {
+  testSamusButton.addEventListener('click', () => {
+    tagsField.value = 'samus';
+    tagsField.focus();
+
+    if (typeof form.requestSubmit === 'function') {
+      form.requestSubmit();
+    } else {
+      form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+    }
+  });
+}
 
 function updateStatus(message) {
   statusEl.textContent = message;
@@ -58,14 +83,67 @@ async function fetchPosts(tags) {
     tags,
   });
 
-  const endpoint = `https://api.rule34.xxx/index.php?${params.toString()}`;
-  const response = await fetch(endpoint);
+  const urls = buildRule34Endpoints(params);
+  const failures = [];
 
-  if (!response.ok) {
-    throw new Error(`Rule34 API request failed: ${response.status}`);
+  for (const url of urls) {
+    const resolvedUrl = resolveEndpointUrl(url);
+
+    try {
+      const posts = await requestPostsFromEndpoint(resolvedUrl);
+      return posts;
+    } catch (error) {
+      console.warn('Failed to fetch posts from Rule34 endpoint:', resolvedUrl, error);
+      failures.push({ url: resolvedUrl, error });
+    }
   }
 
-  const data = await response.json();
+  const aggregateError = new Error('Unable to fetch posts from Rule34.');
+  aggregateError.failures = failures;
+  throw aggregateError;
+}
+
+function buildRule34Endpoints(params) {
+  const query = params.toString();
+  const directEndpoint = `${RULE34_API_URL}?${query}`;
+  const localProxyEndpoint = `${LOCAL_RULE34_PROXY_PATH}?${query}`;
+  const endpoints = [];
+
+  if (shouldPreferLocalProxy()) {
+    endpoints.push(localProxyEndpoint, directEndpoint);
+  } else {
+    endpoints.push(directEndpoint, localProxyEndpoint);
+  }
+
+  return [...new Set(endpoints)];
+}
+
+async function requestPostsFromEndpoint(url) {
+  const response = await fetch(url, {
+    headers: {
+      Accept: 'application/json, text/plain, */*',
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Rule34 API request failed with status ${response.status}`);
+  }
+
+  const rawBody = await response.text();
+
+  if (!rawBody) {
+    return [];
+  }
+
+  let data;
+
+  try {
+    data = JSON.parse(rawBody);
+  } catch (parseError) {
+    console.error('Unable to parse Rule34 response as JSON:', parseError);
+    throw new Error('Rule34 API returned malformed data.');
+  }
+
   return normalizePosts(data);
 }
 
@@ -98,6 +176,44 @@ function normalizePosts(data) {
       };
     })
     .filter(Boolean);
+}
+
+function shouldPreferLocalProxy() {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  const { hostname, protocol } = window.location;
+
+  if (!protocol.startsWith('http')) {
+    return false;
+  }
+
+  const localHostnames = new Set(['localhost', '127.0.0.1', '[::1]']);
+
+  if (localHostnames.has(hostname)) {
+    return true;
+  }
+
+  return hostname.endsWith('.local');
+}
+
+function resolveEndpointUrl(url) {
+  try {
+    return new URL(url, window.location.href).toString();
+  } catch (error) {
+    console.warn('Unable to resolve endpoint URL, using original value instead.', url, error);
+    return url;
+  }
+}
+
+function isLocalProxyUrl(url) {
+  try {
+    const endpoint = new URL(url);
+    return endpoint.origin === window.location.origin && endpoint.pathname === LOCAL_RULE34_PROXY_PATH;
+  } catch (error) {
+    return url.startsWith(LOCAL_RULE34_PROXY_PATH);
+  }
 }
 
 function extractPostsCollection(data) {
