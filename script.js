@@ -215,6 +215,44 @@ function normalizePosts(data) {
     .filter(Boolean);
 }
 
+function shouldPreferLocalProxy() {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  const { hostname, protocol } = window.location;
+
+  if (!protocol.startsWith('http')) {
+    return false;
+  }
+
+  const localHostnames = new Set(['localhost', '127.0.0.1', '[::1]']);
+
+  if (localHostnames.has(hostname)) {
+    return true;
+  }
+
+  return hostname.endsWith('.local');
+}
+
+function resolveEndpointUrl(url) {
+  try {
+    return new URL(url, window.location.href).toString();
+  } catch (error) {
+    console.warn('Unable to resolve endpoint URL, using original value instead.', url, error);
+    return url;
+  }
+}
+
+function isLocalProxyUrl(url) {
+  try {
+    const endpoint = new URL(url);
+    return endpoint.origin === window.location.origin && endpoint.pathname === LOCAL_RULE34_PROXY_PATH;
+  } catch (error) {
+    return url.startsWith(LOCAL_RULE34_PROXY_PATH);
+  }
+}
+
 function extractPostsCollection(data) {
   if (Array.isArray(data)) {
     return data;
