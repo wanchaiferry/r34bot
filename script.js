@@ -11,6 +11,13 @@ const SCROLL_INTERVAL_MS = 5000;
 const RULE34_API_URL = 'https://api.rule34.xxx/index.php';
 const CORS_PROXY_URLS = ['https://cors.isomorphic-git.org/'];
 
+class Rule34ApiError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'Rule34ApiError';
+  }
+}
+
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
   const tags = tagsField.value.trim();
@@ -37,6 +44,12 @@ form.addEventListener('submit', async (event) => {
     startAutoScroll();
   } catch (error) {
     console.error(error);
+
+    if (error instanceof Rule34ApiError || error?.name === 'Rule34ApiError') {
+      updateStatus(error.message);
+      return;
+    }
+
     updateStatus(
       'Unable to load posts after trying multiple endpoints. The Rule34 API may be unavailable or blocking requests from your network. Try again later.'
     );
@@ -83,6 +96,11 @@ async function fetchPosts(tags) {
       return posts;
     } catch (error) {
       console.warn('Failed to fetch posts from Rule34 endpoint:', url, error);
+
+      if (error instanceof Rule34ApiError || error?.name === 'Rule34ApiError') {
+        throw error;
+      }
+
       lastError = error;
     }
   }
@@ -128,7 +146,42 @@ async function requestPostsFromEndpoint(url) {
     throw new Error('Rule34 API returned malformed data.');
   }
 
+  const apiErrorMessage = detectRule34ApiError(data);
+
+  if (apiErrorMessage) {
+    throw new Rule34ApiError(apiErrorMessage);
+  }
+
   return normalizePosts(data);
+}
+
+function detectRule34ApiError(data) {
+  if (!data || typeof data !== 'object') {
+    return null;
+  }
+
+  const successValue = data.success;
+
+  if (successValue === undefined || successValue === null) {
+    return null;
+  }
+
+  const normalizedSuccess = String(successValue).trim().toLowerCase();
+
+  if (normalizedSuccess === 'false' || normalizedSuccess === '0') {
+    const messageCandidates = [data.message, data.reason, data.error]
+      .filter((value) => typeof value === 'string')
+      .map((value) => value.trim())
+      .filter(Boolean);
+
+    const messageSuffix = messageCandidates.length
+      ? `: ${messageCandidates[0]}`
+      : '';
+
+    return `The Rule34 API reported an error${messageSuffix}. Please try again later.`;
+  }
+
+  return null;
 }
 
 function normalizePosts(data) {
