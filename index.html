@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Rule34 Auto Scroll Bot</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header class="app__header">
+        <h1>Rule34 Auto Scroll Bot</h1>
+        <p class="app__description">
+          Enter one or more tags separated by spaces (for example:
+          <code>samus animated</code>). The bot will fetch results from Rule34
+          and automatically scroll through the gallery every five seconds.
+        </p>
+      </header>
+
+      <form id="search-form" class="search-form">
+        <label class="search-form__label" for="tags">Tags</label>
+        <div class="search-form__row">
+          <input
+            type="text"
+            id="tags"
+            name="tags"
+            class="search-form__input"
+            placeholder="e.g. samus animated"
+            autocomplete="off"
+            required
+          />
+          <button type="submit" class="search-form__button">Search</button>
+        </div>
+      </form>
+
+      <section class="status" id="status" role="status" aria-live="polite">
+        Enter tags and press <strong>Search</strong> to begin.
+      </section>
+
+      <section class="results" id="results" aria-live="polite"></section>
+    </main>
+
+    <template id="post-template">
+      <article class="post">
+        <a class="post__image-link" href="" target="_blank" rel="noopener">
+          <img class="post__image" src="" alt="Rule34 post preview" loading="lazy" />
+        </a>
+        <footer class="post__footer">
+          <span class="post__id"></span>
+          <span class="post__score"></span>
+        </footer>
+      </article>
+    </template>
+
+    <script src="script.js" type="module"></script>
+  </body>
+</html>
