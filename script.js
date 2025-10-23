@@ -3,10 +3,13 @@ const tagsField = document.getElementById('tags');
 const statusEl = document.getElementById('status');
 const resultsEl = document.getElementById('results');
 const postTemplate = document.getElementById('post-template');
+const testSamusButton = document.getElementById('test-samus');
 
 let autoScrollTimer;
 
 const SCROLL_INTERVAL_MS = 5000;
+const RULE34_API_URL = 'https://api.rule34.xxx/index.php';
+const CORS_PROXY_URLS = ['https://cors.isomorphic-git.org/'];
 
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
@@ -35,10 +38,23 @@ form.addEventListener('submit', async (event) => {
   } catch (error) {
     console.error(error);
     updateStatus(
-      'Unable to load posts. The Rule34 API may be unavailable or blocked by CORS. Try again later.'
+      'Unable to load posts after trying multiple endpoints. The Rule34 API may be unavailable or blocking requests from your network. Try again later.'
     );
   }
 });
+
+if (testSamusButton) {
+  testSamusButton.addEventListener('click', () => {
+    tagsField.value = 'samus';
+    tagsField.focus();
+
+    if (typeof form.requestSubmit === 'function') {
+      form.requestSubmit();
+    } else {
+      form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+    }
+  });
+}
 
 function updateStatus(message) {
   statusEl.textContent = message;
@@ -58,14 +74,60 @@ async function fetchPosts(tags) {
     tags,
   });
 
-  const endpoint = `https://api.rule34.xxx/index.php?${params.toString()}`;
-  const response = await fetch(endpoint);
+  const urls = buildRule34Endpoints(params);
+  let lastError;
 
-  if (!response.ok) {
-    throw new Error(`Rule34 API request failed: ${response.status}`);
+  for (const url of urls) {
+    try {
+      const posts = await requestPostsFromEndpoint(url);
+      return posts;
+    } catch (error) {
+      console.warn('Failed to fetch posts from Rule34 endpoint:', url, error);
+      lastError = error;
+    }
   }
 
-  const data = await response.json();
+  throw lastError ?? new Error('Unable to fetch posts from Rule34.');
+}
+
+function buildRule34Endpoints(params) {
+  const query = params.toString();
+  const directEndpoint = `${RULE34_API_URL}?${query}`;
+
+  const proxiedEndpoints = CORS_PROXY_URLS.map((proxyBase) => {
+    const normalizedProxy = proxyBase.endsWith('/') ? proxyBase : `${proxyBase}/`;
+    return `${normalizedProxy}${RULE34_API_URL}?${query}`;
+  });
+
+  return [directEndpoint, ...proxiedEndpoints];
+}
+
+async function requestPostsFromEndpoint(url) {
+  const response = await fetch(url, {
+    headers: {
+      Accept: 'application/json, text/plain, */*',
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Rule34 API request failed with status ${response.status}`);
+  }
+
+  const rawBody = await response.text();
+
+  if (!rawBody) {
+    return [];
+  }
+
+  let data;
+
+  try {
+    data = JSON.parse(rawBody);
+  } catch (parseError) {
+    console.error('Unable to parse Rule34 response as JSON:', parseError);
+    throw new Error('Rule34 API returned malformed data.');
+  }
+
   return normalizePosts(data);
 }
 
