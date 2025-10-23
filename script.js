@@ -65,7 +65,91 @@ async function fetchPosts(tags) {
     throw new Error(`Rule34 API request failed: ${response.status}`);
   }
 
-  return response.json();
+  const data = await response.json();
+  return normalizePosts(data);
+}
+
+function normalizePosts(data) {
+  const candidatePosts = extractPostsCollection(data);
+
+  return candidatePosts
+    .map((post) => {
+      if (!post || typeof post !== 'object') {
+        return null;
+      }
+
+      const normalized = mergeAttributePayload(post);
+      const fileUrl =
+        normalized.file_url || normalized.sample_url || normalized.preview_url;
+
+      if (!fileUrl) {
+        return null;
+      }
+
+      const previewUrl =
+        normalized.preview_url || normalized.sample_url || fileUrl;
+      const score = parseScore(normalized.score);
+
+      return {
+        ...normalized,
+        file_url: fileUrl,
+        preview_url: previewUrl,
+        score,
+      };
+    })
+    .filter(Boolean);
+}
+
+function extractPostsCollection(data) {
+  if (Array.isArray(data)) {
+    return data;
+  }
+
+  if (!data || typeof data !== 'object') {
+    return [];
+  }
+
+  if (Array.isArray(data.posts)) {
+    return data.posts;
+  }
+
+  if (Array.isArray(data.post)) {
+    return data.post;
+  }
+
+  if (data.posts) {
+    return [data.posts];
+  }
+
+  if (data.post) {
+    return [data.post];
+  }
+
+  return [];
+}
+
+function mergeAttributePayload(post) {
+  const { ['@attributes']: attributes, ...rest } = post;
+
+  if (attributes && typeof attributes === 'object') {
+    return { ...rest, ...attributes };
+  }
+
+  return rest;
+}
+
+function parseScore(rawScore) {
+  if (typeof rawScore === 'number' && Number.isFinite(rawScore)) {
+    return rawScore;
+  }
+
+  const parsed = Number.parseInt(rawScore ?? '0', 10);
+
+  if (Number.isNaN(parsed)) {
+    return 0;
+  }
+
+  return parsed;
 }
 
 function renderPosts(posts) {
@@ -82,10 +166,12 @@ function renderPosts(posts) {
     const id = node.querySelector('.post__id');
     const score = node.querySelector('.post__score');
 
+    const postId = post.id ?? post.post_id ?? 'N/A';
+
     link.href = post.file_url;
     img.src = post.preview_url || post.file_url;
-    img.alt = `Rule34 post #${post.id ?? 'unknown'}`;
-    id.innerHTML = `<strong>ID:</strong> ${post.id ?? 'N/A'}`;
+    img.alt = `Rule34 post #${postId}`;
+    id.innerHTML = `<strong>ID:</strong> ${postId}`;
     score.innerHTML = `<strong>Score:</strong> ${post.score ?? 0}`;
 
     fragment.appendChild(node);
